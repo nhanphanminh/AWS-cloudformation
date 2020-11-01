@@ -156,13 +156,9 @@ Resources:
       VPCSecurityGroups:
         - !GetAtt 
           - DBEC2SecurityGroup
-          - GroupId
-  WebServer:
-    Type: 'AWS::EC2::Instance'
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT7M
-        Count: '1'
+          - GroupId  
+  MyWebServerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
     Metadata:
       'AWS::CloudFormation::Init':
         configSets:
@@ -196,11 +192,11 @@ Resources:
                   - |
                     triggers=post.update
                   - >
-                    path=Resources.WebServer.Metadata.AWS::CloudFormation::Init
+                    path=Resources.MyWebServerLaunchTemplate.Metadata.AWS::CloudFormation::Init
                   - 'action=/opt/aws/bin/cfn-init -v '
                   - '         --stack '
                   - !Ref 'AWS::StackName'
-                  - '         --resource WebServer '
+                  - '         --resource MyWebServerLaunchTemplate '
                   - '         --configsets full_install '
                   - '         --region '
                   - !Ref 'AWS::Region'
@@ -289,44 +285,47 @@ Resources:
             02_restart_apache:
               command: sudo service apache2 restart
     Properties:
-      InstanceType: !Ref InstanceType
-      SecurityGroups:
+      LaunchTemplateName: MyLaunchTemplate
+      LaunchTemplateData:
+        InstanceType: !Ref InstanceType
+        DisableApiTermination: 'true'
+        KeyName: !Ref KeyName
+        ImageId: !FindInMap 
+          - AWSRegionAMIEC2
+          - !Ref 'AWS::Region'
+          - Ubuntu16
+        SecurityGroups:
         - !Ref WebServerSecurityGroup
-      KeyName: !Ref KeyName
-      ImageId: !FindInMap 
-        - AWSRegionAMIEC2
-        - !Ref 'AWS::Region'
-        - Ubuntu16
-      UserData: !Base64 
-        'Fn::Join':
-          - ''
-          - - |
-              #!/bin/bash -xe
-            - |
-              apt-get update -y
-            - |
-              apt-get install -y python-setuptools
-            - |
-              mkdir -p /opt/aws/bin
-            - >
-              wget
-              https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
-            - >
-              python -m easy_install --script-dir /opt/aws/bin
-              aws-cfn-bootstrap-latest.tar.gz
-            - '/opt/aws/bin/cfn-init -v '
-            - '         --stack '
-            - !Ref 'AWS::StackName'
-            - '         --resource WebServer '
-            - '         --configsets full_install '
-            - '         --region '
-            - !Ref 'AWS::Region'
-            - |+
+        UserData: !Base64 
+          'Fn::Join':
+            - ''
+            - - |
+                #!/bin/bash -xe
+              - |
+                apt-get update -y
+              - |
+                apt-get install -y python-setuptools
+              - |
+                mkdir -p /opt/aws/bin
+              - >
+                wget
+                https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
+              - >
+                python -m easy_install --script-dir /opt/aws/bin
+                aws-cfn-bootstrap-latest.tar.gz
+              - '/opt/aws/bin/cfn-init -v '
+              - '         --stack '
+              - !Ref 'AWS::StackName'
+              - '         --resource MyWebServerLaunchTemplate '
+              - '         --configsets full_install '
+              - '         --region '
+              - !Ref 'AWS::Region'
+              - |+
 
-            - '/opt/aws/bin/cfn-signal -e $? '
-            - '         --stack '
-            - !Ref 'AWS::StackName'
-            - '         --resource WebServer '
-            - '         --region '
-            - !Ref 'AWS::Region'
-            - |+
+              - '/opt/aws/bin/cfn-signal -e $? '
+              - '         --stack '
+              - !Ref 'AWS::StackName'
+              - '         --resource MyWebServerLaunchTemplate '
+              - '         --region '
+              - !Ref 'AWS::Region'
+              - |+  
