@@ -7,6 +7,21 @@ Description: >-
   **WARNING** This template creates an Amazon EC2 instance. You will be billed
   for the AWS resources used if you create a stack from this template.
 Parameters:
+  Subnets:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Default: "subnet-d34f9ab5, subnet-4f5ada16"
+    Description: The list of SubnetIds in your Virtual Private Cloud (VPC)
+    ConstraintDescription: >-
+      must be a list of at least two existing subnets associated with at least
+      two different availability zones. They should be residing in the selected
+      Virtual Private Cloud.
+  WebServerCapacity:
+    Default: '1'
+    Description: The initial number of WebServer instances
+    Type: Number
+    MinValue: '1'
+    MaxValue: '5'
+    ConstraintDescription: must be between 1 and 5 EC2 instances.
   KeyName:
     Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
     Type: 'AWS::EC2::KeyPair::KeyName'
@@ -135,6 +150,31 @@ Resources:
           FromPort: '443'
           ToPort: '443'
           CidrIp: 0.0.0.0/0
+  WebServerGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      VPCZoneIdentifier: !Ref Subnets
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MyWebServerLaunchTemplate
+        Version: !GetAtt MyWebServerLaunchTemplate.LatestVersionNumber
+      MinSize: '1'
+      MaxSize: '5'
+      DesiredCapacity: !Ref WebServerCapacity
+      # TargetGroupARNs:
+      #   - !Ref ALBTargetGroup
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+        Count: !Ref WebServerCapacity
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstancesInService: '1'
+        MaxBatchSize: '1'
+        PauseTime: PT15M
+        WaitOnResourceSignals: 'true'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 89b057cf-50cf-4532-8363-3cf2c7a3f23b
   MyWebServerLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Metadata:
@@ -266,8 +306,8 @@ Resources:
           - AWSRegionAMIEC2
           - !Ref 'AWS::Region'
           - Ubuntu16
-        SecurityGroups:
-        - !Ref WebServerSecurityGroup
+        SecurityGroupIds:
+          - !GetAtt WebServerSecurityGroup.GroupId
         UserData: !Base64 
           'Fn::Join':
             - ''
@@ -297,7 +337,7 @@ Resources:
               - '/opt/aws/bin/cfn-signal -e $? '
               - '         --stack '
               - !Ref 'AWS::StackName'
-              - '         --resource MyWebServerLaunchTemplate '
+              - '         --resource WebServerGroup '
               - '         --region '
               - !Ref 'AWS::Region'
               - |+  
